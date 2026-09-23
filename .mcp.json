@@ -2,7 +2,10 @@
   "mcpServers": {
     "agent-looker": {
       "type": "http",
-      "url": "https://agent-looker.whoscall.com/mcp"
+      "url": "${AGENT_LOOKER_MCP_URL:-https://api.agentlooker.ai/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${AGENT_LOOKER_API_TOKEN}"
+      }
     }
   }
 }

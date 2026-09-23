@@ -94,12 +94,28 @@ node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs
 
 This will:
 1. Open your browser to sign in (or let you paste a token manually)
-2. Save your credentials to `~/.agent-looker.cfg`
+2. Save your token to the `env` block of `~/.claude/settings.json`
 3. Install security rules into `~/.claude/CLAUDE.md`
 
 #### 3. Restart Claude Code
 
 Then **restart Claude Code** to activate.
+
+### Pointing at another environment (staging / develop)
+
+The plugin defaults to production. The endpoint is a single environment variable, `AGENT_LOOKER_MCP_URL`, which the MCP server config, both hooks, and the setup script all read. To switch, pass it to setup once:
+
+```bash
+node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs --mcp-url https://agent-looker-stg.example.com/mcp
+```
+
+This stores the override in `~/.claude/settings.json` under `env` and authenticates against that environment. The dashboard and auth URLs are derived from it. Run setup again with the production URL to go back to the default.
+
+You can also set the variable yourself instead of using the flag:
+
+```json
+{ "env": { "AGENT_LOOKER_MCP_URL": "https://agent-looker-stg.example.com/mcp" } }
+```
 
 ## Uninstall
 
@@ -107,7 +123,7 @@ Then **restart Claude Code** to activate.
 node ~/.claude/plugins/marketplaces/agent-looker-claude/bin/setup.mjs --uninstall
 ```
 
-This removes `~/.agent-looker.cfg`, the CLAUDE.md security rules, cached skills, and the MCP config entry.
+This removes the Agent Looker entries from `~/.claude/settings.json`, the CLAUDE.md security rules, cached skills, and the plugin.
 
 ## Project structure
 
@@ -124,7 +140,7 @@ bin/
   text-checker.mjs     # PostToolUse hook — content safety check
   append.md            # CLAUDE.md security rules template
 lib/
-  config.mjs           # Shared config loader (cfg file, env vars, defaults)
+  config.mjs           # Shared config loader (env vars, settings.json env, defaults)
   client-info.mjs      # MCP client name and version
 skills/
   check-url-safety/    # Skill: check URLs before access

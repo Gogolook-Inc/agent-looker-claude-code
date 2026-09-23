@@ -1,17 +1,24 @@
 #!/usr/bin/env node
 import fs from "fs";
 import path from "path";
-import os from "os";
 import https from "https";
 import http from "http";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
-import { CFG_PATH } from "../lib/config.mjs";
+import {
+  DEFAULT_MCP_URL,
+  ENV_MCP_URL,
+  ENV_DASHBOARD_URL,
+  ENV_TOKEN,
+  CLAUDE_DIR,
+  SETTINGS_PATH,
+  CFG_PATH,
+  MCP_URL as CURRENT_MCP_URL,
+  DASHBOARD_URL as CURRENT_DASHBOARD_URL,
+  MCP_TOKEN as CURRENT_TOKEN,
+  dashboardUrlFor,
+} from "../lib/config.mjs";
 
-const DEFAULT_MCP_URL = "https://agent-looker.whoscall.com/mcp";
-const DEFAULT_DASHBOARD_URL = "https://agent-looker.whoscall.com/dashboard";
-
-const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
 const CLAUDE_MD_PATH = path.join(CLAUDE_DIR, "CLAUDE.md");
 
 // ── Parse CLI flags ─────────────────────────────────────────────────────────
@@ -32,41 +39,59 @@ function parseArgs(argv) {
 
 const cliArgs = parseArgs(process.argv);
 
-// ── Load / save cfg ─────────────────────────────────────────────────────────
+// ── Resolve MCP / Dashboard URLs ────────────────────────────────────────────
+// --mcp-url wins; otherwise whatever is already configured (settings.json env,
+// legacy ~/.agent-looker.cfg) or the production default.
 
-function loadCfg() {
+const MCP_URL = cliArgs.mcpUrl ?? CURRENT_MCP_URL;
+
+const DASHBOARD_URL = cliArgs.dashboardUrl
+  ?? (cliArgs.mcpUrl ? dashboardUrlFor(MCP_URL) : CURRENT_DASHBOARD_URL);
+
+// ── settings.json env helpers ───────────────────────────────────────────────
+// Claude Code injects ~/.claude/settings.json "env" into every session, and the
+// plugin's .mcp.json expands ${AGENT_LOOKER_MCP_URL:-<prod>} / ${AGENT_LOOKER_API_TOKEN}
+// from it. Writing here is what makes the endpoint switch actually take effect;
+// the plugin cache directory is ephemeral and must not be edited.
+
+function loadSettings() {
   try {
-    return JSON.parse(fs.readFileSync(CFG_PATH, "utf8"));
+    return JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf8"));
   } catch {
     return {};
   }
 }
 
-function saveCfg(cfg) {
-  fs.writeFileSync(CFG_PATH, JSON.stringify(cfg, null, 2) + "\n");
+function updateSettingsEnv(mutate) {
+  const settings = loadSettings();
+  settings.env = settings.env ?? {};
+  mutate(settings.env);
+  if (Object.keys(settings.env).length === 0) delete settings.env;
+  fs.mkdirSync(CLAUDE_DIR, { recursive: true });
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n");
 }
 
-// ── Resolve MCP / Dashboard URLs ────────────────────────────────────────────
-
-const existingCfg = loadCfg();
-
-const MCP_URL = cliArgs.mcpUrl
-  ?? existingCfg.mcpUrl
-  ?? DEFAULT_MCP_URL;
-
-const DASHBOARD_URL = cliArgs.dashboardUrl
-  ?? existingCfg.dashboardUrl
-  ?? DEFAULT_DASHBOARD_URL;
+const BEGIN_FLAG = "<!-- BEGIN:agent-looker-security -->";
+const END_FLAG = "<!-- END:agent-looker-security -->";
 
 // ── Uninstall ───────────────────────────────────────────────────────────────
 
 if (cliArgs.uninstall) {
-  // 1. Remove ~/.agent-looker.cfg
+  // 1. Remove our env vars from ~/.claude/settings.json
+  if (fs.existsSync(SETTINGS_PATH)) {
+    updateSettingsEnv((env) => {
+      delete env[ENV_TOKEN];
+      delete env[ENV_MCP_URL];
+      delete env[ENV_DASHBOARD_URL];
+    });
+  }
+
+  // 2. Remove legacy ~/.agent-looker.cfg
   if (fs.existsSync(CFG_PATH)) {
     fs.unlinkSync(CFG_PATH);
   }
 
-  // 2. Remove agent-looker from ~/.claude/.mcp.json
+  // 3. Remove agent-looker from legacy ~/.claude/.mcp.json (older installs)
   const mcpPath = path.join(CLAUDE_DIR, ".mcp.json");
   if (fs.existsSync(mcpPath)) {
     try {
@@ -82,10 +107,7 @@ if (cliArgs.uninstall) {
     } catch {}
   }
 
-  // 3. Remove security rules from ~/.claude/CLAUDE.md
-  const BEGIN_FLAG = "<!-- BEGIN:agent-looker-security -->";
-  const END_FLAG = "<!-- END:agent-looker-security -->";
-
+  // 4. Remove security rules from ~/.claude/CLAUDE.md
   if (fs.existsSync(CLAUDE_MD_PATH)) {
     const content = fs.readFileSync(CLAUDE_MD_PATH, "utf8");
     if (content.includes(BEGIN_FLAG)) {
@@ -99,7 +121,7 @@ if (cliArgs.uninstall) {
     }
   }
 
-  // 4. Remove agent-looker skills
+  // 5. Remove agent-looker skills
   const skillsDir = path.join(CLAUDE_DIR, "skills");
   if (fs.existsSync(skillsDir)) {
     for (const entry of fs.readdirSync(skillsDir)) {
@@ -109,7 +131,7 @@ if (cliArgs.uninstall) {
     }
   }
 
-  // 5. Try uninstalling Claude Code plugin
+  // 6. Try uninstalling Claude Code plugin
   try {
     execSync("claude plugin uninstall agent-looker 2>/dev/null", {
       stdio: "pipe",
@@ -155,7 +177,7 @@ function deviceFlowRequest(url, options = {}) {
 }
 
 async function deviceFlow() {
-  const baseUrl = MCP_URL.replace(/\/mcp$/, "");
+  const baseUrl = MCP_URL.replace(/\/mcp\/?$/, "");
 
   // 1. Request a device code
   const initRes = await deviceFlowRequest(`${baseUrl}/auth/device`, {
@@ -202,15 +224,19 @@ async function deviceFlow() {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
+if (MCP_URL !== DEFAULT_MCP_URL) {
+  console.log(`Using MCP endpoint: ${MCP_URL}`);
+}
+
 let result;
 let skipAuth = false;
 
-if (existingCfg.token) {
+if (CURRENT_TOKEN) {
   process.stdout.write("Verifying existing token... ");
-  const ok = await verifyToken(existingCfg.token);
+  const ok = await verifyToken(CURRENT_TOKEN);
   if (ok) {
     console.log("Token valid.");
-    result = { token: existingCfg.token, email: "" };
+    result = { token: CURRENT_TOKEN, email: "" };
     skipAuth = true;
   } else {
     console.log("Invalid (401). Please re-authenticate.");
@@ -219,79 +245,34 @@ if (existingCfg.token) {
 
 if (!skipAuth) {
   result = await deviceFlow();
-
 }
 
-// ── 1. Save to ~/.agent-looker.cfg ──────────────────────────────────────────
+// ── 1. Write token + endpoint to ~/.claude/settings.json env ────────────────
+// Only non-default URLs are stored, so the plugin's built-in production default
+// stays in charge for everyone else. Passing the production URL explicitly
+// therefore resets a previous override.
 
-const newCfg = {
-  token: result.token,
-  mcpUrl: MCP_URL,
-  dashboardUrl: DASHBOARD_URL,
-};
-saveCfg(newCfg);
-console.log(`✓ Config saved to ${CFG_PATH}`);
+updateSettingsEnv((env) => {
+  env[ENV_TOKEN] = result.token;
 
-// ── Helpers: .mcp.json writers ──────────────────────────────────────────────
+  if (MCP_URL === DEFAULT_MCP_URL) delete env[ENV_MCP_URL];
+  else env[ENV_MCP_URL] = MCP_URL;
+
+  if (DASHBOARD_URL === dashboardUrlFor(MCP_URL)) delete env[ENV_DASHBOARD_URL];
+  else env[ENV_DASHBOARD_URL] = DASHBOARD_URL;
+});
+console.log(`✓ Credentials saved to ${SETTINGS_PATH}`);
+
+// Migrate away from the legacy cfg file so it can't shadow settings.json later.
+if (fs.existsSync(CFG_PATH)) {
+  fs.unlinkSync(CFG_PATH);
+  console.log(`✓ Removed legacy ${CFG_PATH}`);
+}
+
+// ── 2. CLAUDE.md security rules ─────────────────────────────────────────────
 
 const BIN_DIR = path.dirname(fileURLToPath(import.meta.url));
-
-function updateMcpJson(mcpPath, mutate) {
-  if (!fs.existsSync(mcpPath)) return false;
-  try {
-    const mcp = JSON.parse(fs.readFileSync(mcpPath, "utf8"));
-    if (!mcp.mcpServers?.["agent-looker"]) return false;
-    mutate(mcp.mcpServers["agent-looker"]);
-    fs.writeFileSync(mcpPath, JSON.stringify(mcp, null, 2) + "\n");
-    return true;
-  } catch (e) {
-    console.error(`✗ Failed to update ${mcpPath}:`, e.message);
-    return false;
-  }
-}
-
-function updateAllMcpCopies(mutate) {
-  // Active user config
-  updateMcpJson(path.join(CLAUDE_DIR, ".mcp.json"), mutate);
-
-  // Every cached installed copy: ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/.mcp.json
-  // Claude Code reads from the cache, not the marketplace source, so this is what actually takes effect.
-  // Iterate all plugin dirs — updateMcpJson already guards on mcpServers["agent-looker"].
-  const cacheRoot = process.env.CLAUDE_CODE_PLUGIN_CACHE_DIR ?? path.join(CLAUDE_DIR, "plugins", "cache");
-  if (fs.existsSync(cacheRoot)) {
-    for (const marketplaceDir of fs.readdirSync(cacheRoot)) {
-      const marketplacePath = path.join(cacheRoot, marketplaceDir);
-      if (!fs.statSync(marketplacePath).isDirectory()) continue;
-      for (const pluginName of fs.readdirSync(marketplacePath)) {
-        const pluginDir = path.join(marketplacePath, pluginName);
-        if (!fs.statSync(pluginDir).isDirectory()) continue;
-        for (const versionDir of fs.readdirSync(pluginDir)) {
-          updateMcpJson(path.join(pluginDir, versionDir, ".mcp.json"), mutate);
-        }
-      }
-    }
-  }
-}
-
-// ── 1b. Write auth token to all .mcp.json copies ────────────────────────────
-
-updateAllMcpCopies((entry) => {
-  entry.headers = { Authorization: `Bearer ${result.token}` };
-});
-console.log("✓ MCP auth header written");
-
-// ── 2. Update plugin .mcp.json if --mcp-url was provided ────────────────────
-
-if (cliArgs.mcpUrl) {
-  // Also update the marketplace source .mcp.json (source of truth for future installs)
-  updateMcpJson(path.join(BIN_DIR, "..", ".mcp.json"), (entry) => { entry.url = MCP_URL; });
-  updateAllMcpCopies((entry) => { entry.url = MCP_URL; });
-}
-
-// ── 3. CLAUDE.md security rules ─────────────────────────────────────────────
 const appendSource = path.join(BIN_DIR, "append.md");
-const BEGIN_FLAG = "<!-- BEGIN:agent-looker-security -->";
-const END_FLAG = "<!-- END:agent-looker-security -->";
 
 if (fs.existsSync(appendSource)) {
   fs.mkdirSync(CLAUDE_DIR, { recursive: true });
@@ -319,6 +300,7 @@ if (result.email) {
 
 if (MCP_URL !== DEFAULT_MCP_URL) {
   console.log(`✓ MCP endpoint: ${MCP_URL}`);
+  console.log(`✓ Dashboard:    ${DASHBOARD_URL}`);
 }
 
 console.log("");

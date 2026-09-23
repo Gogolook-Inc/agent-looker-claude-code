@@ -94,12 +94,28 @@ node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs
 
 這會：
 1. 開啟瀏覽器登入（或讓你手動貼上 token）
-2. 將認證資訊存到 `~/.agent-looker.cfg`
+2. 將 token 存到 `~/.claude/settings.json` 的 `env` 區塊
 3. 將安全規則寫入 `~/.claude/CLAUDE.md`
 
 #### 3. 重新啟動 Claude Code
 
 完成後**重新啟動 Claude Code** 即可生效。
+
+### 切換到其他環境（staging / develop）
+
+Plugin 預設連 production。API endpoint 由單一環境變數 `AGENT_LOOKER_MCP_URL` 決定，MCP server 設定、兩個 hook 和 setup script 都讀同一個值。要切換環境，執行 setup 時帶參數即可：
+
+```bash
+node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs --mcp-url https://agent-looker-stg.example.com/mcp
+```
+
+這會把設定寫進 `~/.claude/settings.json` 的 `env`，並對該環境進行認證。Dashboard 和認證用的網址都會從這個值推導。要切回預設，用 production 網址再跑一次 setup 即可。
+
+也可以不透過參數，直接自己設定變數：
+
+```json
+{ "env": { "AGENT_LOOKER_MCP_URL": "https://agent-looker-stg.example.com/mcp" } }
+```
 
 ## 解除安裝
 
@@ -107,7 +123,7 @@ node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs
 node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs --uninstall
 ```
 
-這會移除 `~/.agent-looker.cfg`、CLAUDE.md 中的安全規則、已快取的 skills 和 MCP config 設定。
+這會移除 `~/.claude/settings.json` 中的 Agent Looker 設定、CLAUDE.md 中的安全規則、已快取的 skills 和 plugin 本身。
 
 ## 專案結構
 
@@ -124,7 +140,7 @@ bin/
   text-checker.mjs     # PostToolUse hook — 內容安全檢查
   append.md            # CLAUDE.md 安全規則範本
 lib/
-  config.mjs           # 共用設定載入器（cfg 檔、環境變數、預設值）
+  config.mjs           # 共用設定載入器（環境變數、settings.json env、預設值）
   client-info.mjs      # MCP client 名稱與版本
 skills/
   check-url-safety/    # Skill：存取前檢查 URL 安全性
