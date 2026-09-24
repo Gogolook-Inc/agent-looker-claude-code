@@ -8,6 +8,7 @@ import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import {
   DEFAULT_MCP_URL,
+  DEFAULT_DASHBOARD_URL,
   ENV_MCP_URL,
   ENV_DASHBOARD_URL,
   ENV_TOKEN,
@@ -17,7 +18,6 @@ import {
   MCP_URL as CURRENT_MCP_URL,
   DASHBOARD_URL as CURRENT_DASHBOARD_URL,
   MCP_TOKEN as CURRENT_TOKEN,
-  dashboardUrlFor,
 } from "../lib/config.mjs";
 
 const CLAUDE_MD_PATH = path.join(CLAUDE_DIR, "CLAUDE.md");
@@ -46,13 +46,13 @@ function parseArgs(argv) {
 const cliArgs = parseArgs(process.argv);
 
 // ── Resolve MCP / Dashboard URLs ────────────────────────────────────────────
-// --mcp-url wins; otherwise whatever is already configured (settings.json env,
-// legacy ~/.agent-looker.cfg) or the production default.
+// CLI flag wins; otherwise whatever is already configured (settings.json env,
+// legacy ~/.agent-looker.cfg) or the production default. The two are
+// independent: api.* and app.* are different hosts, so switching --mcp-url
+// does not move the dashboard. Pass --dashboard-url alongside it.
 
 const MCP_URL = cliArgs.mcpUrl ?? CURRENT_MCP_URL;
-
-const DASHBOARD_URL = cliArgs.dashboardUrl
-  ?? (cliArgs.mcpUrl ? dashboardUrlFor(MCP_URL) : CURRENT_DASHBOARD_URL);
+const DASHBOARD_URL = cliArgs.dashboardUrl ?? CURRENT_DASHBOARD_URL;
 
 // ── settings.json env helpers ───────────────────────────────────────────────
 // Claude Code injects ~/.claude/settings.json "env" into every session, and the
@@ -264,7 +264,7 @@ updateSettingsEnv((env) => {
   if (MCP_URL === DEFAULT_MCP_URL) delete env[ENV_MCP_URL];
   else env[ENV_MCP_URL] = MCP_URL;
 
-  if (DASHBOARD_URL === dashboardUrlFor(MCP_URL)) delete env[ENV_DASHBOARD_URL];
+  if (DASHBOARD_URL === DEFAULT_DASHBOARD_URL) delete env[ENV_DASHBOARD_URL];
   else env[ENV_DASHBOARD_URL] = DASHBOARD_URL;
 });
 console.log(`✓ Credentials saved to ${SETTINGS_PATH}`);
@@ -306,7 +306,12 @@ if (result.email) {
 
 if (MCP_URL !== DEFAULT_MCP_URL) {
   console.log(`✓ MCP endpoint: ${MCP_URL}`);
+}
+if (DASHBOARD_URL !== DEFAULT_DASHBOARD_URL) {
   console.log(`✓ Dashboard:    ${DASHBOARD_URL}`);
+} else if (MCP_URL !== DEFAULT_MCP_URL) {
+  console.log(`! Dashboard still points at production (${DASHBOARD_URL}).`);
+  console.log(`  Pass --dashboard-url or set ${ENV_DASHBOARD_URL} if this environment has its own.`);
 }
 
 console.log("");

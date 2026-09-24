@@ -1,6 +1,6 @@
 # Agent Looker - Claude Code Plugin
 
-A [Claude Code](https://claude.ai/code) plugin that protects AI agents from unsafe URLs, malicious content, and prompt injection attacks via the [Agent Looker](https://agent-looker.whoscall.com/) MCP server.
+A [Claude Code](https://claude.ai/code) plugin that protects AI agents from unsafe URLs, malicious content, and prompt injection attacks via the [Agent Looker](https://agentlooker.ai/) MCP server.
 
 ## What it does
 
@@ -48,7 +48,7 @@ A safe URL can still serve malicious content. URL checks and content checks are 
 
 - [Node.js](https://nodejs.org) >= 18
 - [Claude Code](https://claude.ai/code) CLI or VS Code extension
-- An Agent Looker account (sign up at the dashboard)
+- An Agent Looker account (sign up at the [dashboard](https://app.agentlooker.ai/))
 
 ## Installation
 
@@ -59,9 +59,9 @@ Paste the following prompt directly into your Claude Code agent:
 ```
 Please install the Agent Looker plugin by running these 3 commands in order:
 
-1. Run: claude plugin marketplace add Gogolook-Inc/agent-looker-claude
-2. Run: claude plugin install agent-looker
-3. Run: node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs
+1. Run: claude plugin marketplace add Gogolook-Inc/agent-looker-claude-code
+2. Run: claude plugin install agent-looker-for-claude-code
+3. Run: node ~/.claude/plugins/marketplaces/agent-looker-for-claude/bin/setup.mjs
    IMPORTANT: run step 3 with run_in_background: true, then immediately use the Monitor tool on the returned PID to stream its output. When a line containing an authentication URL appears, show it to me and remind me to open it in my browser. Keep monitoring until I confirm I have signed in, then check that the process exited successfully.
 
 After all steps complete, remind me to restart Claude Code to activate the plugin.
@@ -74,14 +74,14 @@ After all steps complete, remind me to restart Claude Code to activate the plugi
 #### 1. Install the plugin
 
 ```bash
-claude plugin marketplace add Gogolook-Inc/agent-looker-claude
-claude plugin install agent-looker
+claude plugin marketplace add Gogolook-Inc/agent-looker-claude-code
+claude plugin install agent-looker-for-claude-code
 ```
 
 To install a pre-release version, specify the branch:
 
 ```bash
-claude plugin marketplace add Gogolook-Inc/agent-looker-claude@develop
+claude plugin marketplace add Gogolook-Inc/agent-looker-claude-code@develop
 ```
 
 #### 2. Authenticate
@@ -89,13 +89,15 @@ claude plugin marketplace add Gogolook-Inc/agent-looker-claude@develop
 After installing the plugin, run the setup script to authenticate:
 
 ```bash
-node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs
+node ~/.claude/plugins/marketplaces/agent-looker-for-claude/bin/setup.mjs
 ```
 
 This will:
-1. Open your browser to sign in (or let you paste a token manually)
-2. Save your token to the `env` block of `~/.claude/settings.json`
+1. Print an authorization URL. Open it in your browser, sign in with Google, and click Authorize
+2. Create (or reuse) a token for this machine named `claude-code-cli_<hostname>` and save it to the `env` block of `~/.claude/settings.json`
 3. Install security rules into `~/.claude/CLAUDE.md`
+
+Re-running setup on the same machine reuses the existing token; a different machine gets its own, so you can tell them apart and revoke them individually from the dashboard.
 
 #### 3. Restart Claude Code
 
@@ -106,21 +108,21 @@ Then **restart Claude Code** to activate.
 The plugin defaults to production. The endpoint is a single environment variable, `AGENT_LOOKER_MCP_URL`, which the MCP server config, both hooks, and the setup script all read. To switch, pass it to setup once:
 
 ```bash
-node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs --mcp-url https://agent-looker-stg.example.com/mcp
+node ~/.claude/plugins/marketplaces/agent-looker-for-claude/bin/setup.mjs --mcp-url https://api-staging.agentlooker.ai/mcp
 ```
 
-This stores the override in `~/.claude/settings.json` under `env` and authenticates against that environment. The dashboard and auth URLs are derived from it. Run setup again with the production URL to go back to the default.
+This stores the override in `~/.claude/settings.json` under `env` and authenticates against that environment. The device-auth URL is derived from it. The dashboard lives on a different host, so pass `--dashboard-url` (or set `AGENT_LOOKER_DASHBOARD_URL`) when the environment has its own; the default is `https://app.agentlooker.ai/dashboard`. Run setup again with the production URL to go back to the default.
 
 You can also set the variable yourself instead of using the flag:
 
 ```json
-{ "env": { "AGENT_LOOKER_MCP_URL": "https://agent-looker-stg.example.com/mcp" } }
+{ "env": { "AGENT_LOOKER_MCP_URL": "https://api-staging.agentlooker.ai/mcp" } }
 ```
 
 ## Uninstall
 
 ```bash
-node ~/.claude/plugins/marketplaces/agent-looker-claude/bin/setup.mjs --uninstall
+node ~/.claude/plugins/marketplaces/agent-looker-for-claude/bin/setup.mjs --uninstall
 ```
 
 This removes the Agent Looker entries from `~/.claude/settings.json`, the CLAUDE.md security rules, cached skills, and the plugin.
