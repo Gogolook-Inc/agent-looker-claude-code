@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "fs";
+import os from "os";
 import path from "path";
 import https from "https";
 import http from "http";
@@ -20,6 +21,11 @@ import {
 } from "../lib/config.mjs";
 
 const CLAUDE_MD_PATH = path.join(CLAUDE_DIR, "CLAUDE.md");
+
+// Sent with POST /auth/device so the server labels the token per install
+// (e.g. claude-code-cli_MacBook-Pro.local) instead of one shared `cli` token.
+const DEVICE_CLIENT = "claude-code-cli";
+const DEVICE_NAME = os.hostname();
 
 // ── Parse CLI flags ─────────────────────────────────────────────────────────
 
@@ -183,7 +189,7 @@ async function deviceFlow() {
   const initRes = await deviceFlowRequest(`${baseUrl}/auth/device`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: "{}",
+    body: JSON.stringify({ client: DEVICE_CLIENT, device: DEVICE_NAME }),
   });
 
   if (initRes.status !== 200) {
