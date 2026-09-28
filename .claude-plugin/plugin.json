@@ -1,0 +1,25 @@
+{
+  "name": "agent-looker-for-claude-code",
+  "version": "1.0.0",
+  "description": "URL safety check, content moderation, and risk reporting for AI agents via AgentLooker MCP server",
+  "author": {
+    "name": "Gogolook Inc.",
+    "email": "support@agentlooker.ai",
+    "url": "https://www.gogolook.com/zh-tw/contact"
+  },
+  "homepage": "https://agentlooker.ai/",
+  "repository": "https://github.com/Gogolook-Inc/agent-looker-claude-code",
+  "license": "Apache-2.0",
+  "keywords": [
+    "security",
+    "safety",
+    "url-safety",
+    "content-moderation",
+    "prompt-injection",
+    "jailbreak",
+    "risk-reporting",
+    "mcp",
+    "plugin"
+  ],
+  "strict": true
+}

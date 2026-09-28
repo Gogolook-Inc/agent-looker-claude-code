@@ -1,0 +1,11 @@
+{
+  "name": "agent-looker-for-claude",
+  "owner": { "name": "Gogolook" },
+  "plugins": [
+    {
+      "name": "agent-looker-for-claude-code",
+      "source": "./",
+      "description": "URL safety check, content moderation, and risk reporting for AI agents"
+    }
+  ]
+}
