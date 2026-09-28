@@ -1,6 +1,6 @@
 # Agent Looker - Claude Code Plugin
 
-透過 [Agent Looker](https://agent-looker.whoscall.com/) MCP server，保護你的 [Claude Code](https://claude.ai/code) AI agent 免於不安全的 URL、惡意內容和 prompt injection 攻擊。
+透過 [Agent Looker](https://agentlooker.ai/) MCP server，保護你的 [Claude Code](https://claude.ai/code) AI agent 免於不安全的 URL、惡意內容和 prompt injection 攻擊。
 
 ## 功能介紹
 
@@ -48,7 +48,7 @@ PostToolUse hook: text-checker
 
 - [Node.js](https://nodejs.org) >= 18
 - [Claude Code](https://claude.ai/code) CLI 或 VS Code 擴充套件
-- Agent Looker 帳號（在 dashboard 註冊）
+- Agent Looker 帳號（在 [dashboard](https://app.agentlooker.ai/) 註冊）
 
 ## 安裝
 
@@ -59,9 +59,9 @@ PostToolUse hook: text-checker
 ```
 Please install the Agent Looker plugin by running these 3 commands in order:
 
-1. Run: claude plugin marketplace add Gogolook-Inc/agent-looker-claude
-2. Run: claude plugin install agent-looker
-3. Run: node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs
+1. Run: claude plugin marketplace add Gogolook-Inc/agent-looker-claude-code
+2. Run: claude plugin install agent-looker-for-claude-code
+3. Run: node ~/.claude/plugins/marketplaces/agent-looker-for-claude/bin/setup.mjs
    IMPORTANT: run step 3 with run_in_background: true, then immediately use the Monitor tool on the returned PID to stream its output. When a line containing an authentication URL appears, show it to me and remind me to open it in my browser. Keep monitoring until I confirm I have signed in, then check that the process exited successfully.
 
 After all steps complete, remind me to restart Claude Code to activate the plugin.
@@ -74,14 +74,14 @@ After all steps complete, remind me to restart Claude Code to activate the plugi
 #### 1. 安裝 Plugin
 
 ```bash
-claude plugin marketplace add Gogolook-Inc/agent-looker-claude
-claude plugin install agent-looker
+claude plugin marketplace add Gogolook-Inc/agent-looker-claude-code
+claude plugin install agent-looker-for-claude-code
 ```
 
 如需安裝非穩定版本，可以指定分支：
 
 ```bash
-claude plugin marketplace add Gogolook-Inc/agent-looker-claude@develop
+claude plugin marketplace add Gogolook-Inc/agent-looker-claude-code@develop
 ```
 
 #### 2. 認證
@@ -89,25 +89,43 @@ claude plugin marketplace add Gogolook-Inc/agent-looker-claude@develop
 安裝 plugin 後，執行 setup script 進行認證：
 
 ```bash
-node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs
+node ~/.claude/plugins/marketplaces/agent-looker-for-claude/bin/setup.mjs
 ```
 
 這會：
-1. 開啟瀏覽器登入（或讓你手動貼上 token）
-2. 將認證資訊存到 `~/.agent-looker.cfg`
+1. 印出一個授權網址，用瀏覽器開啟並以 Google 帳號登入後按下 Authorize
+2. 為這台機器建立（或沿用）一個名為 `claude-code-cli_<主機名稱>` 的 token，存到 `~/.claude/settings.json` 的 `env` 區塊
 3. 將安全規則寫入 `~/.claude/CLAUDE.md`
+
+同一台機器重跑 setup 會沿用既有 token；換機器會另外建一個，方便在 dashboard 分辨與撤銷。
 
 #### 3. 重新啟動 Claude Code
 
 完成後**重新啟動 Claude Code** 即可生效。
 
+### 切換到其他環境（staging / develop）
+
+Plugin 預設連 production。API endpoint 由單一環境變數 `AGENT_LOOKER_MCP_URL` 決定，MCP server 設定、兩個 hook 和 setup script 都讀同一個值。要切換環境，執行 setup 時帶參數即可：
+
+```bash
+node ~/.claude/plugins/marketplaces/agent-looker-for-claude/bin/setup.mjs --mcp-url https://api-staging.agentlooker.ai/mcp
+```
+
+這會把設定寫進 `~/.claude/settings.json` 的 `env`，並對該環境進行認證。認證用的網址會從這個值推導，但 dashboard 在不同的 host，該環境有自己的 dashboard 時請一併帶 `--dashboard-url`（或設 `AGENT_LOOKER_DASHBOARD_URL`），預設是 `https://app.agentlooker.ai/dashboard`。要切回預設，用 production 網址再跑一次 setup 即可。
+
+也可以不透過參數，直接自己設定變數：
+
+```json
+{ "env": { "AGENT_LOOKER_MCP_URL": "https://api-staging.agentlooker.ai/mcp" } }
+```
+
 ## 解除安裝
 
 ```bash
-node ~/.claude/plugins/marketplaces/agent-looker-marketplace/bin/setup.mjs --uninstall
+node ~/.claude/plugins/marketplaces/agent-looker-for-claude/bin/setup.mjs --uninstall
 ```
 
-這會移除 `~/.agent-looker.cfg`、CLAUDE.md 中的安全規則、已快取的 skills 和 MCP config 設定。
+這會移除 `~/.claude/settings.json` 中的 Agent Looker 設定、CLAUDE.md 中的安全規則、已快取的 skills 和 plugin 本身。
 
 ## 專案結構
 
@@ -124,7 +142,7 @@ bin/
   text-checker.mjs     # PostToolUse hook — 內容安全檢查
   append.md            # CLAUDE.md 安全規則範本
 lib/
-  config.mjs           # 共用設定載入器（cfg 檔、環境變數、預設值）
+  config.mjs           # 共用設定載入器（環境變數、settings.json env、預設值）
   client-info.mjs      # MCP client 名稱與版本
 skills/
   check-url-safety/    # Skill：存取前檢查 URL 安全性
