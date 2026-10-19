@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node ${CLAUDE_PLUGIN_ROOT}/bin/web-checker.mjs"
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/bin/web-checker.mjs",
+            "timeout": 40
           }
         ]
       }
