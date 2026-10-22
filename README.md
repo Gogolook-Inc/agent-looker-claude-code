@@ -8,7 +8,7 @@ Agent Looker adds two layers of protection to your Claude Code sessions:
 
 **Hooks (automatic)** -- System-level guards that run without Claude's involvement:
 
-- **PreToolUse** -- Before every `WebFetch`, the URL is checked against the trust database. Unsafe URLs are blocked before Claude ever sees the response. URLs not yet in the trust cache are let through with a note telling Claude the page is unverified and how to request a full analysis (`deep_scan: true`, 10–25 s) before acting on it.
+- **PreToolUse** -- Before every `WebFetch`, the URL is checked against the trust database. Unsafe URLs are blocked before Claude ever sees the response. URLs with a low trust score but no threat reports (WARNING) are let through with a caution note (read only: no credentials, downloads or code from them). URLs not yet in the trust cache are let through with a note telling Claude the page is unverified and how to request a full analysis (`deep_scan: true`, 10–25 s) before acting on it.
 - **PostToolUse** -- After every `WebFetch` and `WebSearch`, the returned content is scanned for prompt injection, jailbreak attempts, PII leaks, and other risks.
 
 **Skills (Claude-driven)** -- Four skills that teach Claude when and how to call Agent Looker's MCP tools:
@@ -32,6 +32,8 @@ PreToolUse hook: web-checker
       |
       +-- check_url_safety --> UNSAFE  --> blocked (Claude never fetches)
       |                    --> SAFE    --> allowed
+      |                    --> WARNING --> allowed; Claude is told the trust score is low and
+      |                                    to read only (no credentials, downloads or code)
       |                    --> UNKNOWN --> allowed; Claude is told the URL is unverified and
       |                                    may run deep_scan (10–25 s) before acting on it
       v

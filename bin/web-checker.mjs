@@ -5,6 +5,8 @@
  * Reads the Claude Code hook JSON payload from stdin; writes a hook decision to stdout.
  *
  *   SAFE / no data      → allow
+ *   WARNING (low trust score, no threat reports) → allow, and inject additionalContext telling
+ *                         Claude to read with caution (no credentials, downloads or code from it)
  *   UNSAFE              → deny, reason = first threat + first provider reason + trust score
  *   UNKNOWN (not in the trust cache) → allow, and inject additionalContext telling Claude the
  *                         URL is unverified and how to request a full analysis (deep_scan: true,
@@ -18,7 +20,7 @@ import fs from "fs";
 import { URL } from "url";
 import { CLIENT_NAME, CLIENT_VERSION } from "../lib/client-info.mjs";
 import { MCP_URL, MCP_TOKEN } from "../lib/config.mjs";
-import { parseVerdict, blockReason, unknownContext } from "../lib/verdict.mjs";
+import { parseVerdict, blockReason, unknownContext, warningContext } from "../lib/verdict.mjs";
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 
@@ -88,7 +90,7 @@ const allow = () => console.log(JSON.stringify({
   hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" },
 }));
 
-/** Allow the fetch but tell Claude the URL is unverified (same field the Cowork hooks use). */
+/** Allow the fetch but add a note for Claude (unverified or low-trust URL; same field the Cowork hooks use). */
 const allowWithContext = (additionalContext) => console.log(JSON.stringify({
   hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", additionalContext },
 }));
@@ -124,6 +126,7 @@ async function main() {
     const verdict = parseVerdict(await checkUrl(url));
     if (!verdict) { allow(); return; }                       // no JSON verdict in the reply
     if (verdict.isSafe === false) { block(blockReason(verdict)); return; }
+    if (verdict.level === "warning") { allowWithContext(warningContext(url, verdict)); return; } // low trust score, no reports
     if (verdict.isSafe === true) { allow(); return; }        // analyzed and clean, or no data
     allowWithContext(unknownContext(url));                   // not analyzed: Claude decides about deep_scan
   } catch (err) {

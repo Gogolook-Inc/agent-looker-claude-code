@@ -8,7 +8,7 @@ Agent Looker 為你的 Claude Code 對話加上兩層防護：
 
 **Hooks（自動攔截）**——系統層級的防護，不需要 Claude 介入：
 
-- **PreToolUse**——每次 `WebFetch` 前，URL 會先經過信任資料庫比對。不安全的 URL 會直接被攔截，Claude 根本不會拿到回應內容。尚未分析過的 URL 會放行，但會附上一段提醒告訴 Claude 這個頁面未經驗證，若要據此行動可先做完整分析（`deep_scan: true`，約 10–25 秒）。
+- **PreToolUse**——每次 `WebFetch` 前，URL 會先經過信任資料庫比對。不安全的 URL 會直接被攔截，Claude 根本不會拿到回應內容。信任分數偏低但沒有任何威脅通報的 URL（警告）會放行並附上提醒：只能閱讀，不要輸入帳密、下載或執行任何東西。尚未分析過的 URL 會放行，但會附上一段提醒告訴 Claude 這個頁面未經驗證，若要據此行動可先做完整分析（`deep_scan: true`，約 10–25 秒）。
 - **PostToolUse**——每次 `WebFetch` 和 `WebSearch` 完成後，回傳的內容會被掃描是否包含 prompt injection、jailbreak 嘗試、PII 洩漏等風險。
 
 **Skills（Claude 主動驅動）**——四個 skill 教 Claude 何時以及如何呼叫 Agent Looker 的 MCP tools：
@@ -32,6 +32,8 @@ PreToolUse hook: web-checker
       |
       +-- check_url_safety --> 不安全 --> 攔截（Claude 不會取得內容）
       |                    --> 安全   --> 放行
+      |                    --> 警告   --> 放行，並告知 Claude 信任分數偏低，
+      |                                   只能閱讀（不輸入帳密、不下載、不執行）
       |                    --> 未分析 --> 放行，並告知 Claude 此 URL 未經驗證，
       |                                   可先 deep_scan（10–25 秒）再據此行動
       v
