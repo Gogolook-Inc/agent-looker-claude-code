@@ -1,9 +1,17 @@
 #!/usr/bin/env node
 /**
- * web-tracker hook (PreToolUse)
- * Calls agent_looker MCP server to check URL safety.
- * Reads Claude Code hook JSON payload from stdin.
- * Outputs allow/deny JSON to stdout.
+ * web-checker hook (PreToolUse)
+ * Calls the Agent Looker MCP server to check URL safety before WebFetch.
+ * Reads the Claude Code hook JSON payload from stdin; writes a hook decision to stdout.
+ *
+ *   SAFE / no data      → allow
+ *   WARNING (low trust score, no threat reports) → allow, and inject additionalContext telling
+ *                         Claude to read with caution (no credentials, downloads or code from it)
+ *   UNSAFE              → deny, reason = first threat + first provider reason + trust score
+ *   UNKNOWN (not in the trust cache) → allow, and inject additionalContext telling Claude the
+ *                         URL is unverified and how to request a full analysis (deep_scan: true,
+ *                         10–25 s). The hook never deep-scans itself; Claude decides.
+ *   MCP error           → allow (fail open), as before
  */
 
 import http from "http";
@@ -12,6 +20,7 @@ import fs from "fs";
 import { URL } from "url";
 import { CLIENT_NAME, CLIENT_VERSION } from "../lib/client-info.mjs";
 import { MCP_URL, MCP_TOKEN } from "../lib/config.mjs";
+import { parseVerdict, blockReason, unknownContext, warningContext } from "../lib/verdict.mjs";
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 
@@ -75,35 +84,22 @@ async function checkUrl(url) {
   return data;
 }
 
-// ── Result parsing ────────────────────────────────────────────────────────────
-
-function isUnsafe(mcpResult) {
-  const content = mcpResult?.result?.content ?? [];
-  for (const item of content) {
-    try {
-      const parsed = JSON.parse(item.text ?? "");
-      if ("isSafe" in parsed) {
-        if (parsed.isSafe) return { unsafe: false };
-        const first = parsed.threats?.[0];
-        const reason = (typeof first === "string" ? first : first?.threatType) ?? "UNSAFE";
-        return { unsafe: true, reason };
-      }
-    } catch { /* not JSON, skip */ }
-  }
-  return { unsafe: false };
-}
-
 // ── Hook output ───────────────────────────────────────────────────────────────
 
 const allow = () => console.log(JSON.stringify({
   hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" },
 }));
 
+/** Allow the fetch but add a note for Claude (unverified or low-trust URL; same field the Cowork hooks use). */
+const allowWithContext = (additionalContext) => console.log(JSON.stringify({
+  hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow", additionalContext },
+}));
+
 const block = (reason) => console.log(JSON.stringify({
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     permissionDecision: "deny",
-    permissionDecisionReason: `URL blocked by safety check: ${reason}`,
+    permissionDecisionReason: reason,
   },
 }));
 
@@ -127,15 +123,14 @@ async function main() {
   if (!url) { allow(); return; }
 
   try {
-    const result = await checkUrl(url);
-    const { unsafe, reason } = isUnsafe(result);
-    if (unsafe) {
-      block(reason);
-    } else {
-      allow();
-    }
+    const verdict = parseVerdict(await checkUrl(url));
+    if (!verdict) { allow(); return; }                       // no JSON verdict in the reply
+    if (verdict.isSafe === false) { block(blockReason(verdict)); return; }
+    if (verdict.level === "warning") { allowWithContext(warningContext(url, verdict)); return; } // low trust score, no reports
+    if (verdict.isSafe === true) { allow(); return; }        // analyzed and clean, or no data
+    allowWithContext(unknownContext(url));                   // not analyzed: Claude decides about deep_scan
   } catch (err) {
-    process.stderr.write(`[web-tracker] MCP check failed: ${err.message}\n`);
+    process.stderr.write(`[web-checker] MCP check failed: ${err.message}\n`);
     allow(); // fail open
   }
 }

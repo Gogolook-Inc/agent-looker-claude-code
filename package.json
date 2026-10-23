@@ -1,0 +1,12 @@
+{
+  "name": "agent-looker-for-claude-code",
+  "private": true,
+  "version": "1.1.0",
+  "description": "Claude Code plugin: URL safety, content moderation and risk reporting via the Agent Looker MCP server",
+  "scripts": {
+    "test": "node --test \"bin/__tests__/**/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
